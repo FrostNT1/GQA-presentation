@@ -345,7 +345,7 @@ From the detailed results table:
 The research compared three methods for converting MHA to multi-query structure:
 
 **Ranked by Performance:**
-1. ✅ **Mean Pooling** (Best)
+1. **Mean Pooling** (Best)
    - Averages projection matrices of all H original heads
    - Preserves maximum information from pre-trained checkpoint
    - Used in GQA conversion
@@ -354,7 +354,7 @@ The research compared three methods for converting MHA to multi-query structure:
    - Uses projection matrices from only the first head
    - Simple but loses information from other heads
 
-3. ❌ **Random Initialization** (Worst)
+3. **Random Initialization** (Worst)
    - Initializes new key/value matrices from scratch
    - Loses all learned knowledge from pre-training
 
@@ -463,10 +463,10 @@ The research compared three methods for converting MHA to multi-query structure:
 ### How the Work Has Held Up
 
 **Adoption in Industry (2023-2025):**
-- ✅ **Llama 2** (Meta): Uses GQA in 70B parameter model
-- ✅ **Mistral 7B**: Deployed with GQA for efficiency
-- ✅ **Many open-source models** now default to GQA
-- ✅ **Serving frameworks** (vLLM, TGI) have specialized GQA optimizations
+- **Llama 2** (Meta): Uses GQA in 70B parameter model
+- **Mistral 7B**: Deployed with GQA for efficiency
+- **Many open-source models** now default to GQA
+- **Serving frameworks** (vLLM, TGI) have specialized GQA optimizations
 
 **No Major Disputes:**
 - Findings replicated across multiple model families
@@ -656,17 +656,17 @@ The paper's core insight—that we don't have to choose between two extremes but
 
 ## Resource Links
 
-1. 📄 **Original Paper**: [GQA: Training Generalized Multi-Query Transformer Models from Multi-Head Checkpoints](https://arxiv.org/abs/2305.13245) - Ainslie et al., EMNLP 2023
+1. **Original Paper**: [GQA: Training Generalized Multi-Query Transformer Models from Multi-Head Checkpoints](https://arxiv.org/abs/2305.13245) - Ainslie et al., EMNLP 2023
 
-2. 💻 **Hugging Face Implementation**: [Transformers Library GQA Support](https://huggingface.co/docs/transformers/main/en/attention#grouped-query-attention-gqa) - Official implementation and usage guide
+2. **Hugging Face Implementation**: [Transformers Library GQA Support](https://huggingface.co/docs/transformers/main/en/attention#grouped-query-attention-gqa) - Official implementation and usage guide
 
-3. 🦙 **Llama 2 Paper**: [Llama 2: Open Foundation and Fine-Tuned Chat Models](https://arxiv.org/abs/2307.09288) - Meta's deployment of GQA at scale (70B parameters)
+3. **Llama 2 Paper**: [Llama 2: Open Foundation and Fine-Tuned Chat Models](https://arxiv.org/abs/2307.09288) - Meta's deployment of GQA at scale (70B parameters)
 
-4. 📚 **Multi-Query Attention (Predecessor)**: [Fast Transformer Decoding: One Write-Head is All You Need](https://arxiv.org/abs/1911.02150) - Shazeer, 2019
+4. **Multi-Query Attention (Predecessor)**: [Fast Transformer Decoding: One Write-Head is All You Need](https://arxiv.org/abs/1911.02150) - Shazeer, 2019
 
-5. ⚡ **vLLM Documentation**: [vLLM: Easy, Fast, and Cheap LLM Serving with PagedAttention](https://github.com/vllm-project/vllm) - Production serving framework with GQA optimizations
+5. **vLLM Documentation**: [vLLM: Easy, Fast, and Cheap LLM Serving with PagedAttention](https://github.com/vllm-project/vllm) - Production serving framework with GQA optimizations
 
-6. 🎓 **Original Transformer Paper**: [Attention Is All You Need](https://arxiv.org/abs/1706.03762) - Vaswani et al., 2017 - Foundation for all modern attention mechanisms
+6. **Original Transformer Paper**: [Attention Is All You Need](https://arxiv.org/abs/1706.03762) - Vaswani et al., 2017 - Foundation for all modern attention mechanisms
 
 ---
 
