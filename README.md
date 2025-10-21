@@ -15,7 +15,7 @@
 
 ### The Context
 
-Have you ever been typing a prompt to an AI, waiting for it to finish its sentence, and you're just thinking: *what is taking so long?* That little pause, that delay—it's actually one of the biggest challenges in AI right now. These models are running on some of the most powerful computers on the planet, so what's the holdup?
+Have you ever been typing a prompt to an AI, waiting for it to finish its sentence, and you're just thinking: *what is taking so long?* That little pause, that delay, it's actually one of the biggest challenges in AI right now. These models are running on some of the most powerful computers on the planet, so what's the holdup?
 
 The answer isn't about raw computing power. It's actually something more like a massive **traffic jam** happening inside the model's memory.
 
@@ -32,7 +32,7 @@ The answer isn't about raw computing power. It's actually something more like a 
 
 The **memory bandwidth overhead** from loading all attention keys and values at every decoding step.
 
-It's not the compute (GPU calculations) that's slow—it's the constant loading of the KV cache from memory to compute attention for each new token.
+It's not the compute (GPU calculations) that's slow, it's the constant loading of the KV cache from memory to compute attention for each new token.
 
 </details>
 
@@ -53,7 +53,7 @@ The encoder processes the entire input sequence simultaneously, so the KV cache 
 
 ### The Problem Statement
 
-When an AI is generating text, that whole process is called **inference**. The biggest cause of the delay is something called **memory bandwidth**. For every single word the AI generates, it has to load a ton of data from memory—specifically, something called **attention keys and values**.
+When an AI is generating text, that whole process is called **inference**. The biggest cause of the delay is something called **memory bandwidth**. For every single word the AI generates, it has to load a ton of data from memory, specifically, something called **attention keys and values**.
 
 Imagine having to reread an entire library of reference books just to write the very next word in your sentence. It's that constant fetching of data that slows the whole thing down.
 
@@ -66,34 +66,46 @@ Imagine having to reread an entire library of reference books just to write the 
 
 ### Existing Solutions and Their Trade-offs
 
-To understand the fix, we first have to understand how these models pay attention. Think of it like a team of researchers and a library full of librarians:
+To understand the fix, we first have to understand how these models pay attention. Here's a helpful way to think about it:
+
+**At every decoding step, all attention heads work in parallel analyzing the input, but before they can start, they need reference materials (key-value pairs) loaded from memory.**
+
+Think of a librarian who must retrieve reference documents from storage. This walking back and forth to fetch materials is the bottleneck, not the researchers' actual analysis work.
 
 **Multi-Head Attention (MHA)** - The Original
-- Every single researcher gets their own personal librarian
-- High quality, detailed answers
-- But **very inefficient and slow**
-- Each query head has its own dedicated key and value head
+- The librarian must make **H separate trips** to storage
+- Each query head needs its own unique set of K/V reference materials
+- High quality, diverse perspectives on the input
+- But many trips = **slow inference** due to memory bandwidth
 
 **Multi-Query Attention (MQA)** - The Speed Solution
-- All researchers share just **one librarian**
-- **Blazing fast** inference
-- But that poor librarian gets overwhelmed
-- Quality of answers takes a hit
+- The librarian makes **just 1 trip** to storage
+- All query heads share one single set of K/V materials
+- **Blazing fast** inference, minimal memory loading
+- But everyone works from the same limited references, so **quality suffers**
 - Can cause **training instability**
 
 As you can see in the diagram above:
-- **Left**: MHA has 8 separate K/V heads for 8 queries (slow, high quality)
-- **Right**: MQA has 1 shared K/V head for 8 queries (fast, quality loss)
+- **Left**: MHA has 8 separate K/V heads (8 trips to storage, slow, high quality)
+- **Right**: MQA has 1 shared K/V head (1 trip to storage, fast, quality loss)
 - **Middle**: GQA finds the sweet spot
+
+**The bottleneck isn't how fast the attention heads compute (parallel GPU work), it's how many times we must load K/V data from memory (memory bandwidth).**
 
 ### The GQA Approach
 
-**Grouped-Query Attention (GQA)** is the genius solution in the middle. Instead of every researcher having their own librarian (MHA) or all researchers sharing one librarian (MQA), we put the researchers into small groups, and each group gets to share one librarian.
+**Grouped-Query Attention (GQA)** is the genius solution in the middle. 
+
+The librarian makes **G trips** to storage (where 1 < G < H), bringing back materials for small groups of query heads to share.
 
 It's the perfect compromise:
-- Maintains quality by having multiple K/V representations
-- Achieves speed by reducing the KV cache size
+- Maintains quality by having **G different sets of K/V materials** (not just 1 like MQA)
+- Achieves speed by making **fewer trips than MHA** (load G matrices instead of H)
+- **Memory bandwidth:** Load only G sets of data from memory
+- **Computation:** All H query heads still work in parallel
 - **Interpolates between MHA and MQA**
+
+Fewer trips to storage than MHA (faster), but more diverse materials than MQA (better quality).
 
 ### How the Problem Was Addressed
 
@@ -101,7 +113,7 @@ The brilliant insight: we don't need to train a new model from scratch. We can c
 
 #### Step 1: Checkpoint Conversion via Mean Pooling
 
-Instead of firing all but one of our expert librarians, we merge their collective knowledge together.
+Rather than discarding learned knowledge, we consolidate multiple K/V heads by merging their information together.
 
 ![Mean Pooling Conversion](images/mean-pool.png)
 
@@ -111,23 +123,54 @@ Instead of firing all but one of our expert librarians, we merge their collectiv
 - Same process for value heads
 - Preserves maximum information from the pre-trained model
 
+Think of it as: Instead of having H different reference catalogs, we merge them into G consolidated catalogs that retain the collective knowledge.
+
 This works **way better** than:
-- Just picking one head randomly
-- Starting from scratch with random initialization
+- Just picking one head randomly (loses information from other heads)
+- Starting from scratch with random initialization (loses all learned knowledge)
+
+---
+## Question 2: Understanding the GQA Trade-offs
+### Part A: The Uptraining Efficiency
+
+**We can convert an existing MHA model to GQA using mean pooling. But then the model needs additional training to adapt to its new structure.**
+
+**How much additional training time do you think is required? What percentage of the original pre-training compute?**
+
+*Consider: The model has already learned everything during MHA pre-training. It just needs to adjust to the new attention structure.*
+
+<details>
+<summary>Click to reveal answer</summary>
+
+Only **5% of the original training time!**
+
+This is shockingly efficient. If the original model took months to train, uptraining takes just days. The model retains all its learned knowledge, it only needs a brief adjustment period to work with the new grouped K/V heads.
+
+**Why this matters:**
+- Converting existing models is economically viable
+- Don't need to retrain from scratch (which would cost 100%)
+- Can upgrade deployed models to be 5x faster at minimal cost
+- Makes GQA practical for real-world deployment
+
+</details>
+
+---
 
 #### Step 2: Uptraining (Only 5%!)
 
-After conversion, the model needs a brief adjustment period—like a patient waking up from surgery. It has all the same knowledge but needs time to adapt to its new setup.
+After conversion, the model needs a brief adjustment period, like a patient waking up from surgery. It has all the same knowledge but needs time to adapt to its new setup.
 
 How long? **Only 5% of the original training time!**
 
 This short period of extra training gives the model enough time to learn how to work with its new, streamlined attention setup. Because it's only 5% of the original compute cost, it is an unbelievably efficient way to get a much faster model.
 
-We're not rebuilding the whole car here—we're just giving the engine a quick tune-up.
+We're not rebuilding the whole car here, we're just giving the engine a quick tune-up.
 
 ---
 
-## Question 2: The GQA Trade-off
+## Question 2: Understanding the GQA Trade-offs
+
+### Part B: The Speed-Quality Trade-off
 
 ![GQA Groups Scaling](images/GQA-groups.png)
 
@@ -164,18 +207,16 @@ The graph shows that GQA-8 achieves the optimal balance, staying close to MQA's 
 
 **Algorithm:**
 
-```
-For each head h = 1, ..., H:
-    Q_h ← X W_q^h                                    // Query projection for head h
-    K_h ← X W_k^h                                    // Key projection for head h
-    V_h ← X W_v^h                                    // Value projection for head h
-    
-    scores_h ← (Q_h K_h^T) / sqrt(d_k)              // Scaled dot-product attention
-    attn_h ← softmax(scores_h)                       // Attention weights
-    head_h ← attn_h V_h                              // Weighted values
-
-output ← W_o [head_1; head_2; ...; head_H]           // Concatenate and project
-```
+1. **for** $h = 1, \ldots, H$ **do**
+2. &nbsp;&nbsp;&nbsp;&nbsp;$Q_h \leftarrow X W_q^h$ &nbsp;&nbsp;&nbsp;&nbsp;▷ Query projection for head $h$
+3. &nbsp;&nbsp;&nbsp;&nbsp;$K_h \leftarrow X W_k^h$ &nbsp;&nbsp;&nbsp;&nbsp;▷ Key projection for head $h$
+4. &nbsp;&nbsp;&nbsp;&nbsp;$V_h \leftarrow X W_v^h$ &nbsp;&nbsp;&nbsp;&nbsp;▷ Value projection for head $h$
+5. &nbsp;&nbsp;&nbsp;&nbsp;$\text{scores}_h \leftarrow (Q_h K_h^T) / \sqrt{d_k}$ &nbsp;&nbsp;&nbsp;&nbsp;▷ Scaled dot-product attention
+6. &nbsp;&nbsp;&nbsp;&nbsp;$\text{attn}_h \leftarrow \text{softmax}(\text{scores}_h)$ &nbsp;&nbsp;&nbsp;&nbsp;▷ Attention weights
+7. &nbsp;&nbsp;&nbsp;&nbsp;$\text{head}_h \leftarrow \text{attn}_h V_h$ &nbsp;&nbsp;&nbsp;&nbsp;▷ Weighted values
+8. **end for**
+9. $\text{output} \leftarrow W_o [\text{head}_1; \text{head}_2; \ldots; \text{head}_H]$ &nbsp;&nbsp;&nbsp;&nbsp;▷ Concatenate and project
+10. **return** $\text{output}$
 
 **Memory Complexity:** $O(H \cdot d_{\text{model}} \cdot d_k)$ for KV cache
 
@@ -191,19 +232,16 @@ output ← W_o [head_1; head_2; ...; head_H]           // Concatenate and projec
 
 **Algorithm:**
 
-```
-K ← X W_k                                            // Single shared key projection
-V ← X W_v                                            // Single shared value projection
-
-For each head h = 1, ..., H:
-    Q_h ← X W_q^h                                    // Query projection for head h
-    
-    scores_h ← (Q_h K^T) / sqrt(d_k)                // All heads share same K
-    attn_h ← softmax(scores_h)                       // Attention weights
-    head_h ← attn_h V                                // All heads share same V
-
-output ← W_o [head_1; head_2; ...; head_H]           // Concatenate and project
-```
+1. $K \leftarrow X W_k$ &nbsp;&nbsp;&nbsp;&nbsp;▷ Single shared key projection
+2. $V \leftarrow X W_v$ &nbsp;&nbsp;&nbsp;&nbsp;▷ Single shared value projection
+3. **for** $h = 1, \ldots, H$ **do**
+4. &nbsp;&nbsp;&nbsp;&nbsp;$Q_h \leftarrow X W_q^h$ &nbsp;&nbsp;&nbsp;&nbsp;▷ Query projection for head $h$
+5. &nbsp;&nbsp;&nbsp;&nbsp;$\text{scores}_h \leftarrow (Q_h K^T) / \sqrt{d_k}$ &nbsp;&nbsp;&nbsp;&nbsp;▷ All heads share same $K$
+6. &nbsp;&nbsp;&nbsp;&nbsp;$\text{attn}_h \leftarrow \text{softmax}(\text{scores}_h)$ &nbsp;&nbsp;&nbsp;&nbsp;▷ Attention weights
+7. &nbsp;&nbsp;&nbsp;&nbsp;$\text{head}_h \leftarrow \text{attn}_h V$ &nbsp;&nbsp;&nbsp;&nbsp;▷ All heads share same $V$
+8. **end for**
+9. $\text{output} \leftarrow W_o [\text{head}_1; \text{head}_2; \ldots; \text{head}_H]$ &nbsp;&nbsp;&nbsp;&nbsp;▷ Concatenate and project
+10. **return** $\text{output}$
 
 **Memory Complexity:** $O(d_{\text{model}} \cdot d_k)$ for KV cache ✓ **Much smaller!**
 
@@ -221,23 +259,20 @@ output ← W_o [head_1; head_2; ...; head_H]           // Concatenate and projec
 
 **Algorithm:**
 
-```
-queries_per_group ← H / G
-
-For each group g = 1, ..., G:
-    K_g ← X W_k^g                                    // Key projection for group g
-    V_g ← X W_v^g                                    // Value projection for group g
-
-For each head h = 1, ..., H:
-    Q_h ← X W_q^h                                    // Query projection for head h
-    g ← floor(h / queries_per_group)                 // Determine which group
-    
-    scores_h ← (Q_h K_g^T) / sqrt(d_k)              // Use group's shared K
-    attn_h ← softmax(scores_h)                       // Attention weights
-    head_h ← attn_h V_g                              // Use group's shared V
-
-output ← W_o [head_1; head_2; ...; head_H]           // Concatenate and project
-```
+1. $\text{queries\_per\_group} \leftarrow H / G$
+2. **for** $g = 1, \ldots, G$ **do**
+3. &nbsp;&nbsp;&nbsp;&nbsp;$K_g \leftarrow X W_k^g$ &nbsp;&nbsp;&nbsp;&nbsp;▷ Key projection for group $g$
+4. &nbsp;&nbsp;&nbsp;&nbsp;$V_g \leftarrow X W_v^g$ &nbsp;&nbsp;&nbsp;&nbsp;▷ Value projection for group $g$
+5. **end for**
+6. **for** $h = 1, \ldots, H$ **do**
+7. &nbsp;&nbsp;&nbsp;&nbsp;$Q_h \leftarrow X W_q^h$ &nbsp;&nbsp;&nbsp;&nbsp;▷ Query projection for head $h$
+8. &nbsp;&nbsp;&nbsp;&nbsp;$g \leftarrow \lfloor h / \text{queries\_per\_group} \rfloor$ &nbsp;&nbsp;&nbsp;&nbsp;▷ Determine which group
+9. &nbsp;&nbsp;&nbsp;&nbsp;$\text{scores}_h \leftarrow (Q_h K_g^T) / \sqrt{d_k}$ &nbsp;&nbsp;&nbsp;&nbsp;▷ Use group's shared $K$
+10. &nbsp;&nbsp;&nbsp;&nbsp;$\text{attn}_h \leftarrow \text{softmax}(\text{scores}_h)$ &nbsp;&nbsp;&nbsp;&nbsp;▷ Attention weights
+11. &nbsp;&nbsp;&nbsp;&nbsp;$\text{head}_h \leftarrow \text{attn}_h V_g$ &nbsp;&nbsp;&nbsp;&nbsp;▷ Use group's shared $V$
+12. **end for**
+13. $\text{output} \leftarrow W_o [\text{head}_1; \text{head}_2; \ldots; \text{head}_H]$ &nbsp;&nbsp;&nbsp;&nbsp;▷ Concatenate and project
+14. **return** $\text{output}$
 
 **Memory Complexity:** $O(G \cdot d_{\text{model}} \cdot d_k)$ for KV cache
 
@@ -252,23 +287,16 @@ output ← W_o [head_1; head_2; ...; head_H]           // Concatenate and projec
 
 **Conversion Process:**
 
-```
-Given: MHA parameters W_k^1, W_k^2, ..., W_k^H and W_v^1, W_v^2, ..., W_v^H
+**Given:** MHA parameters $W_k^1, W_k^2, \ldots, W_k^H$ and $W_v^1, W_v^2, \ldots, W_v^H$
 
-queries_per_group ← H / G
-
-For each group g = 1, ..., G:
-    start_idx ← g × queries_per_group
-    end_idx ← start_idx + queries_per_group
-    
-    // Mean pool key projection matrices in this group
-    W_k^g ← (1 / queries_per_group) × Σ_{i=start_idx}^{end_idx-1} W_k^i
-    
-    // Mean pool value projection matrices in this group
-    W_v^g ← (1 / queries_per_group) × Σ_{i=start_idx}^{end_idx-1} W_v^i
-
-Return: GQA model with G key/value heads
-```
+1. $\text{queries\_per\_group} \leftarrow H / G$
+2. **for** $g = 1, \ldots, G$ **do**
+3. &nbsp;&nbsp;&nbsp;&nbsp;$\text{start\_idx} \leftarrow g \times \text{queries\_per\_group}$
+4. &nbsp;&nbsp;&nbsp;&nbsp;$\text{end\_idx} \leftarrow \text{start\_idx} + \text{queries\_per\_group}$
+5. &nbsp;&nbsp;&nbsp;&nbsp;$W_k^g \leftarrow \frac{1}{\text{queries\_per\_group}} \times \sum_{i=\text{start\_idx}}^{\text{end\_idx}-1} W_k^i$ &nbsp;&nbsp;&nbsp;&nbsp;▷ Mean pool key matrices
+6. &nbsp;&nbsp;&nbsp;&nbsp;$W_v^g \leftarrow \frac{1}{\text{queries\_per\_group}} \times \sum_{i=\text{start\_idx}}^{\text{end\_idx}-1} W_v^i$ &nbsp;&nbsp;&nbsp;&nbsp;▷ Mean pool value matrices
+7. **end for**
+8. **return** GQA model with $G$ key/value heads
 
 **Why Mean Pooling Works Best:**
 - Preserves maximum information from pre-trained checkpoint
@@ -281,17 +309,14 @@ Return: GQA model with G key/value heads
 
 **Uptraining:**
 
-```
-uptrain_steps ← 0.05 × N_steps                       // Only 5% of original!
-model_GQA ← converted model from mean pooling
-
-For step = 1 to uptrain_steps:
-    batch ← sample from training_data
-    loss ← compute_loss(model_GQA, batch)
-    model_GQA ← update_parameters(model_GQA, loss)   // Standard gradient descent
-
-Return: Uptrained GQA model
-```
+1. $\text{uptrain\_steps} \leftarrow 0.05 \times N_{\text{steps}}$ &nbsp;&nbsp;&nbsp;&nbsp;▷ Only 5% of original!
+2. $\text{model}_{\text{GQA}} \leftarrow$ converted model from mean pooling
+3. **for** $\text{step} = 1$ **to** $\text{uptrain\_steps}$ **do**
+4. &nbsp;&nbsp;&nbsp;&nbsp;$\text{batch} \leftarrow \text{sample}(\text{training\_data})$
+5. &nbsp;&nbsp;&nbsp;&nbsp;$\text{loss} \leftarrow \text{compute\_loss}(\text{model}_{\text{GQA}}, \text{batch})$
+6. &nbsp;&nbsp;&nbsp;&nbsp;$\text{model}_{\text{GQA}} \leftarrow \text{update\_parameters}(\text{model}_{\text{GQA}}, \text{loss})$ &nbsp;&nbsp;&nbsp;&nbsp;▷ Standard gradient descent
+7. **end for**
+8. **return** Uptrained GQA model
 
 **Key Insight:** Brief uptraining (5%) allows model to adapt to new attention structure while retaining knowledge from original MHA checkpoint.
 
@@ -438,9 +463,9 @@ The research compared three methods for converting MHA to multi-query structure:
 **Issue:** GQA evaluated in isolation
 
 **Unexplored combinations:**
-- **FlashAttention**: Different memory optimization technique—do they compose well?
+- **FlashAttention**: Different memory optimization technique, do they compose well?
 - **Quantization**: INT8 or INT4 weights could further reduce memory bandwidth
-- **Speculative decoding**: Multiple token prediction—how does it interact?
+- **Speculative decoding**: Multiple token prediction, how does it interact?
 - **Sparse attention patterns**: Could combining reduce memory even further?
 
 **Why it matters:** Real deployments use multiple optimizations; understanding interactions is crucial.
@@ -524,10 +549,10 @@ GQA provided a third option:
 #### Models Using GQA
 
 **Major deployments:**
-- 🦙 **Llama 2** (Meta, July 2023): 70B model uses GQA
+- **Llama 2** (Meta, July 2023): 70B model uses GQA
   - One of the most widely deployed open LLMs
   - Proved GQA works at massive scale
-- 🌪️ **Mistral 7B** (September 2023): GQA for efficiency
+- **Mistral 7B** (September 2023): GQA for efficiency
   - Outperforms larger models partly due to efficient architecture
 - **Countless open-source models** now default to GQA
   - Yi, Qwen, DeepSeek, and many others
@@ -650,7 +675,7 @@ GQA represents a broader trend in AI research:
 
 By making powerful AI **faster** (5-7x speedup), **cheaper** (smaller infrastructure), and **more accessible** (easier deployment), GQA helped move AI from research labs to real-world applications that benefit everyone.
 
-The paper's core insight—that we don't have to choose between two extremes but can intelligently interpolate—has influenced thinking far beyond attention mechanisms. It's a reminder that in a field often dominated by "bigger = better," sometimes the smartest solution is finding the right balance.
+The paper's core insight, that we don't have to choose between two extremes but can intelligently interpolate, has influenced thinking far beyond attention mechanisms. It's a reminder that in a field often dominated by "bigger = better," sometimes the smartest solution is finding the right balance.
 
 ---
 
