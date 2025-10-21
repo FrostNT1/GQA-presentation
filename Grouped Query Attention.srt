@@ -1,0 +1,548 @@
+1
+00:00:00,000 --> 00:00:01,960
+Have you ever been typing a prompt to an AI,
+
+2
+00:00:01,960 --> 00:00:03,460
+waiting for it to finish its sentence,
+
+3
+00:00:03,460 --> 00:00:06,300
+and you're just thinking, come on, what is taking so long?
+
+4
+00:00:06,300 --> 00:00:08,040
+Well, that little pause, that delay,
+
+5
+00:00:08,040 --> 00:00:10,920
+it's actually one of the biggest challenges in AI right now.
+
+6
+00:00:10,920 --> 00:00:13,140
+But what if I told you there's a super clever way
+
+7
+00:00:13,140 --> 00:00:15,960
+to make these huge models dramatically faster
+
+8
+00:00:15,960 --> 00:00:18,440
+without having to build a whole new one from scratch?
+
+9
+00:00:18,440 --> 00:00:20,500
+Okay, let's dive into this really cool technique
+
+10
+00:00:20,500 --> 00:00:22,600
+called grouped query attention.
+
+11
+00:00:22,600 --> 00:00:23,640
+So here's our game plan.
+
+12
+00:00:23,640 --> 00:00:25,480
+First, we're gonna talk about the problem.
+
+13
+00:00:25,480 --> 00:00:27,900
+What is this AI inference bottleneck?
+
+14
+00:00:27,900 --> 00:00:31,480
+Then we'll get into how AI pays attention in the first place.
+
+15
+00:00:31,480 --> 00:00:34,080
+After that, we'll walk through a brilliant two-step process
+
+16
+00:00:34,080 --> 00:00:37,360
+for fixing the speed issue on a model that already exists.
+
+17
+00:00:37,360 --> 00:00:39,660
+And finally, we'll see the incredible payoff
+
+18
+00:00:39,660 --> 00:00:42,280
+you get in both speed and quality.
+
+19
+00:00:42,280 --> 00:00:44,320
+All right, let's get right into it.
+
+20
+00:00:44,320 --> 00:00:46,500
+That delay, you know, that waiting period
+
+21
+00:00:46,500 --> 00:00:48,900
+when an AI is trying to generate a response,
+
+22
+00:00:48,900 --> 00:00:50,060
+well, it has a name.
+
+23
+00:00:50,060 --> 00:00:52,280
+It's called the inference bottleneck.
+
+24
+00:00:52,280 --> 00:00:53,920
+And it's a huge roadblock when it comes
+
+25
+00:00:53,920 --> 00:00:55,820
+to making these powerful tools practical
+
+26
+00:00:55,820 --> 00:00:57,320
+for all of us to use every day.
+
+27
+00:00:57,900 --> 00:01:00,480
+It's a totally fair question, right?
+
+28
+00:01:00,480 --> 00:01:04,080
+I mean, these models are running on some of the most powerful computers
+
+29
+00:01:04,080 --> 00:01:05,160
+on the planet.
+
+30
+00:01:05,160 --> 00:01:06,660
+So what's the holdup?
+
+31
+00:01:06,660 --> 00:01:09,740
+Well, the answer isn't really about raw computing power.
+
+32
+00:01:09,740 --> 00:01:12,780
+It's actually something more like a massive traffic jam
+
+33
+00:01:12,780 --> 00:01:15,800
+happening inside the model's memory.
+
+34
+00:01:15,800 --> 00:01:18,080
+So when an AI is generating text,
+
+35
+00:01:18,080 --> 00:01:20,420
+that whole process is called inference.
+
+36
+00:01:20,420 --> 00:01:22,160
+And the biggest cause of that traffic jam
+
+37
+00:01:22,160 --> 00:01:24,080
+is something called memory bandwidth.
+
+38
+00:01:24,080 --> 00:01:26,660
+See, for every single word the AI generates,
+
+39
+00:01:26,660 --> 00:01:30,260
+it has to load a ton of data from memory, specifically something
+
+40
+00:01:30,260 --> 00:01:32,420
+called attention keys and values.
+
+41
+00:01:32,420 --> 00:01:35,800
+Just imagine having to reread an entire library of reference books
+
+42
+00:01:35,800 --> 00:01:37,840
+just to write the very next word in your sentence.
+
+43
+00:01:37,840 --> 00:01:40,640
+It's that constant fetching of data that slows the whole thing down.
+
+44
+00:01:41,180 --> 00:01:44,020
+Now, to understand the fix, we first have to get a handle
+
+45
+00:01:44,020 --> 00:01:45,720
+on how these models pay attention.
+
+46
+00:01:46,200 --> 00:01:48,760
+And honestly, the best way to think about it is with a little story
+
+47
+00:01:48,760 --> 00:01:52,140
+about a team of researchers and a library full of librarians.
+
+48
+00:01:52,140 --> 00:01:54,860
+Okay, picture this.
+
+49
+00:01:54,860 --> 00:01:59,320
+The part of the AI that's actively thinking is like a team of researchers.
+
+50
+00:01:59,320 --> 00:02:01,780
+In AI terms, we call them queries.
+
+51
+00:02:01,780 --> 00:02:04,020
+They need information to do their job, right?
+
+52
+00:02:04,020 --> 00:02:06,900
+And that information is stored in this huge library,
+
+53
+00:02:06,900 --> 00:02:08,940
+which is managed by librarians.
+
+54
+00:02:08,940 --> 00:02:11,660
+These librarians represent the keys and values.
+
+55
+00:02:11,660 --> 00:02:15,120
+That's the critical data that has to be loaded over and over again.
+
+56
+00:02:15,120 --> 00:02:17,860
+And what's so cool about this diagram is how it shows the different ways
+
+57
+00:02:17,860 --> 00:02:19,620
+you can set up this library.
+
+58
+00:02:19,620 --> 00:02:24,000
+So, on the far left, you have what's called multi-head attention, or MHA.
+
+59
+00:02:24,000 --> 00:02:27,180
+This is the original, super high-quality, but slow version.
+
+60
+00:02:27,180 --> 00:02:30,180
+It's like every single researcher gets their own personal librarian.
+
+61
+00:02:30,180 --> 00:02:33,560
+You get amazing detailed answers, but it's just not very efficient.
+
+62
+00:02:33,560 --> 00:02:37,860
+Then, all the way on the right, you have multi-query attention, or MQA.
+
+63
+00:02:37,860 --> 00:02:41,100
+This is where all the researchers have to share just one librarian.
+
+64
+00:02:41,100 --> 00:02:44,320
+It is blazing fast, but that poor librarian gets totally overwhelmed,
+
+65
+00:02:44,320 --> 00:02:46,720
+and the quality of the answers can really take a hit.
+
+66
+00:02:46,720 --> 00:02:49,620
+And then, right there in the middle, we have the genius solution.
+
+67
+00:02:49,620 --> 00:02:52,240
+Grouped query attention, or GQA.
+
+68
+00:02:52,240 --> 00:02:57,180
+Here, you just put the researchers into small groups, and each group gets to share one librarian.
+
+69
+00:02:57,180 --> 00:02:59,180
+It's the perfect compromise.
+
+70
+00:02:59,180 --> 00:03:01,180
+So this is the fundamental problem, right?
+
+71
+00:03:01,180 --> 00:03:03,860
+This is the trade-off we've been stuck with.
+
+72
+00:03:03,860 --> 00:03:07,720
+On one hand, you've got the high-quality, but slow MHA.
+
+73
+00:03:07,720 --> 00:03:11,940
+On the other, the much faster, but potentially lower-quality MQA.
+
+74
+00:03:11,940 --> 00:03:13,960
+For a long time, you just had to pick one.
+
+75
+00:03:13,960 --> 00:03:21,520
+But the whole goal of this research was to figure out how to take a powerful, pre-trained MHA model and cleverly convert it to get the best of both worlds.
+
+76
+00:03:21,520 --> 00:03:24,140
+So, how in the world do they do it?
+
+77
+00:03:24,140 --> 00:03:27,760
+Well, the first step is a really slick piece of engineering.
+
+78
+00:03:27,760 --> 00:03:33,380
+Instead of just, you know, firing all but one of our expert librarians, we're going to merge their collective knowledge together.
+
+79
+00:03:33,380 --> 00:03:37,160
+And this visual shows you exactly how it works.
+
+80
+00:03:37,160 --> 00:03:42,140
+On the left, you see all those different key projection heads from the original MHA model.
+
+81
+00:03:42,140 --> 00:03:47,640
+Think of these as the unique brains or the specialized knowledge of each of our individual librarians.
+
+82
+00:03:47,640 --> 00:03:51,560
+Now, we take all of them, and we run them through this process called mean pooling.
+
+83
+00:03:51,560 --> 00:03:53,260
+And what comes out the other side?
+
+84
+00:03:53,260 --> 00:03:55,160
+One new combined head.
+
+85
+00:03:55,160 --> 00:04:01,180
+We've essentially averaged the knowledge of all our specialist librarians to create one super librarian.
+
+86
+00:04:01,180 --> 00:04:04,800
+So what is this mean pooling? Well, it's pretty much what it sounds like.
+
+87
+00:04:04,800 --> 00:04:11,280
+You are literally averaging the parameters, those key and value projection matrices, from all the original heads.
+
+88
+00:04:11,280 --> 00:04:16,620
+And the research shows this works way better than just picking one librarian at random, or starting over.
+
+89
+00:04:16,620 --> 00:04:22,560
+Because it saves the maximum amount of valuable information that was already learned by that powerful, pre-trained model.
+
+90
+00:04:22,560 --> 00:04:24,360
+Okay, step one is done.
+
+91
+00:04:24,360 --> 00:04:28,840
+We've merged our librarians, and we've created a new, more efficient structure.
+
+92
+00:04:28,840 --> 00:04:32,060
+Now the model is a bit like a patient just waking up from surgery.
+
+93
+00:04:32,060 --> 00:04:36,760
+It has all the same knowledge, but it needs a minute to get used to its new setup.
+
+94
+00:04:36,760 --> 00:04:39,980
+So, how long does this adjustment period take?
+
+95
+00:04:39,980 --> 00:04:44,520
+Do we have to completely retrain the model from zero for months and months?
+
+96
+00:04:44,520 --> 00:04:46,720
+No. Not even close.
+
+97
+00:04:46,720 --> 00:04:51,360
+It only needs to be trained for about 5% of its original training time.
+
+98
+00:04:51,360 --> 00:04:54,080
+That's it. Just 5%.
+
+99
+00:04:54,080 --> 00:04:57,500
+This short period of extra training is what's called up-training.
+
+100
+00:04:57,500 --> 00:05:02,000
+It just gives the model enough time to learn how to work with its new, streamlined attention setup.
+
+101
+00:05:02,000 --> 00:05:08,220
+And because it's only 5% of the original compute cost, it is an unbelievably efficient way to get a much faster model.
+
+102
+00:05:08,220 --> 00:05:12,220
+We're not rebuilding the whole car here. We're just giving the engine a quick tune-up.
+
+103
+00:05:12,220 --> 00:05:15,260
+Alright, so we've done our two-step conversion.
+
+104
+00:05:15,260 --> 00:05:17,560
+Mean pooling and a little bit of up-training.
+
+105
+00:05:17,560 --> 00:05:19,980
+The big question is, was it worth it?
+
+106
+00:05:19,980 --> 00:05:21,700
+Let's take a look at the results.
+
+107
+00:05:21,700 --> 00:05:24,760
+The payoff is absolutely fantastic.
+
+108
+00:05:24,760 --> 00:05:25,880
+Look at this chart.
+
+109
+00:05:25,880 --> 00:05:27,480
+It's showing inference speed.
+
+110
+00:05:27,480 --> 00:05:32,500
+That tall bar on the left, the slowest one, that's our original, high-quality MHA model.
+
+111
+00:05:32,500 --> 00:05:35,580
+The shortest bar on the right is the super-fast MQA.
+
+112
+00:05:35,580 --> 00:05:38,660
+But look at our converted GQA model, right there in the middle.
+
+113
+00:05:38,660 --> 00:05:41,520
+It is almost as fast as the fastest possible version.
+
+114
+00:05:41,520 --> 00:05:44,080
+It just slashes the waiting time.
+
+115
+00:05:44,080 --> 00:05:45,400
+And what about quality?
+
+116
+00:05:45,400 --> 00:05:49,200
+I mean, speed is great, but not if the answers are bad.
+
+117
+00:05:49,200 --> 00:05:53,000
+Well, this quote from the paper says it all perfectly.
+
+118
+00:05:53,000 --> 00:05:58,080
+The GQA model, our compromise with small groups of researchers, maintains a quality level that
+
+119
+00:05:58,080 --> 00:06:03,420
+is incredibly close to the original, slow model, all while running at nearly top speed.
+
+120
+00:06:03,420 --> 00:06:06,340
+It is a massive, massive win-win.
+
+121
+00:06:06,340 --> 00:06:09,000
+So let's just quickly recap what we learned.
+
+122
+00:06:09,000 --> 00:06:13,160
+That delay we feel when using big AI models is a very real problem.
+
+123
+00:06:13,160 --> 00:06:16,020
+And it's caused by a memory bandwidth bottleneck.
+
+124
+00:06:16,020 --> 00:06:19,820
+But instead of training brand new models from scratch, which is incredibly expensive, we
+
+125
+00:06:19,820 --> 00:06:22,620
+can just convert existing high-quality models.
+
+126
+00:06:22,620 --> 00:06:24,840
+The process is pretty straightforward.
+
+127
+00:06:24,840 --> 00:06:29,320
+Use mean pooling to merge the attention heads, and then you do a very brief up-training, about
+
+128
+00:06:29,320 --> 00:06:31,600
+5%, to let the model adjust.
+
+129
+00:06:31,600 --> 00:06:32,600
+The result?
+
+130
+00:06:32,600 --> 00:06:38,220
+Grouped query attention truly gives us the best of both worlds, speed and quality.
+
+131
+00:06:38,220 --> 00:06:41,260
+And this all leaves us with a really fascinating thought.
+
+132
+00:06:41,260 --> 00:06:45,960
+For a long time, the race in AI seems to be all about who could build the biggest, most
+
+133
+00:06:45,960 --> 00:06:47,380
+massive model.
+
+134
+00:06:47,380 --> 00:06:52,580
+But techniques like this one show that maybe smarter engineering can give us even bigger
+
+135
+00:06:52,580 --> 00:06:53,520
+wins.
+
+136
+00:06:53,520 --> 00:06:59,220
+By making powerful AI so much cheaper and faster to run, clever ideas like this might just be
+
+137
+00:06:59,220 --> 00:07:03,600
+the real key to making it accessible and genuinely useful for everyone.
+
