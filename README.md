@@ -36,19 +36,6 @@ It's not the compute (GPU calculations) that's slow, it's the constant loading o
 
 </details>
 
-### Follow-up Question
-
-**Why is memory bandwidth less of a bottleneck for encoder self-attention layers?**
-
-<details>
-<summary>Click to reveal answer</summary>
-
-Because encoder representations are computed **in parallel**, not autoregressively one token at a time.
-
-The encoder processes the entire input sequence simultaneously, so the KV cache is computed once and reused. The decoder generates tokens sequentially, requiring repeated memory loads at each step.
-
-</details>
-
 ---
 
 ### The Problem Statement
@@ -68,44 +55,44 @@ Imagine having to reread an entire library of reference books just to write the 
 
 To understand the fix, we first have to understand how these models pay attention. Here's a helpful way to think about it:
 
-**At every decoding step, all attention heads work in parallel analyzing the input, but before they can start, they need reference materials (key-value pairs) loaded from memory.**
+**At every decoding step, all attention heads work in parallel analyzing the input, but before they can start, they all need their reference materials (key-value pairs) loaded from memory at the same time.**
 
-Think of a librarian who must retrieve reference documents from storage. This walking back and forth to fetch materials is the bottleneck, not the researchers' actual analysis work.
+Think of a library storage room with a narrow doorway. Multiple librarians need to retrieve different reference documents simultaneously, but they all must pass through that same narrow doorway. The doorway represents memory bandwidth - it limits how much data can flow through at once, creating congestion when many try to access it simultaneously.
 
 **Multi-Head Attention (MHA)** - The Original
-- The librarian must make **H separate trips** to storage
+- **H librarians** all trying to squeeze through the doorway at once with their materials
 - Each query head needs its own unique set of K/V reference materials
 - High quality, diverse perspectives on the input
-- But many trips = **slow inference** due to memory bandwidth
+- But **too much congestion** at the doorway = **slow inference** due to memory bandwidth bottleneck
 
 **Multi-Query Attention (MQA)** - The Speed Solution
-- The librarian makes **just 1 trip** to storage
+- **Only 1 librarian** passes through the doorway
 - All query heads share one single set of K/V materials
-- **Blazing fast** inference, minimal memory loading
+- **No congestion**, blazing fast inference with minimal memory bandwidth
 - But everyone works from the same limited references, so **quality suffers**
 - Can cause **training instability**
 
 As you can see in the diagram above:
-- **Left**: MHA has 8 separate K/V heads (8 trips to storage, slow, high quality)
-- **Right**: MQA has 1 shared K/V head (1 trip to storage, fast, quality loss)
+- **Left**: MHA has 8 separate K/V heads (8 librarians, heavy congestion, slow, high quality)
+- **Right**: MQA has 1 shared K/V head (1 librarian, no congestion, fast, quality loss)
 - **Middle**: GQA finds the sweet spot
 
-**The bottleneck isn't how fast the attention heads compute (parallel GPU work), it's how many times we must load K/V data from memory (memory bandwidth).**
+**The bottleneck isn't how fast the attention heads compute (parallel GPU work), it's the congestion at the memory bandwidth "doorway" when all heads need their K/V data simultaneously.**
 
 ### The GQA Approach
 
 **Grouped-Query Attention (GQA)** is the genius solution in the middle. 
 
-The librarian makes **G trips** to storage (where 1 < G < H), bringing back materials for small groups of query heads to share.
+Instead of H librarians crowding the doorway (MHA) or just 1 librarian (MQA), we have **G librarians** passing through (where 1 < G < H), each carrying materials for a small group of query heads to share.
 
 It's the perfect compromise:
 - Maintains quality by having **G different sets of K/V materials** (not just 1 like MQA)
-- Achieves speed by making **fewer trips than MHA** (load G matrices instead of H)
-- **Memory bandwidth:** Load only G sets of data from memory
+- Achieves speed by having **less congestion than MHA** (only G librarians instead of H)
+- **Memory bandwidth:** Only G sets of data need to flow through simultaneously
 - **Computation:** All H query heads still work in parallel
 - **Interpolates between MHA and MQA**
 
-Fewer trips to storage than MHA (faster), but more diverse materials than MQA (better quality).
+Less congestion than MHA (faster), but more diverse materials than MQA (better quality).
 
 ### How the Problem Was Addressed
 
@@ -113,7 +100,7 @@ The brilliant insight: we don't need to train a new model from scratch. We can c
 
 #### Step 1: Checkpoint Conversion via Mean Pooling
 
-Rather than discarding learned knowledge, we consolidate multiple K/V heads by merging their information together.
+Rather than firing all but a few librarians and losing their knowledge, we create **"super librarians"** by merging the expertise of multiple librarians together.
 
 ![Mean Pooling Conversion](images/mean-pool.png)
 
@@ -123,10 +110,10 @@ Rather than discarding learned knowledge, we consolidate multiple K/V heads by m
 - Same process for value heads
 - Preserves maximum information from the pre-trained model
 
-Think of it as: Instead of having H different reference catalogs, we merge them into G consolidated catalogs that retain the collective knowledge.
+Think of it as: Instead of having H different librarians with specialized knowledge, we merge their expertise into G "super librarians" who each possess the combined knowledge of multiple specialists. This reduces congestion at the doorway while retaining diverse knowledge.
 
 This works **way better** than:
-- Just picking one head randomly (loses information from other heads)
+- Just picking one librarian randomly (loses specialized knowledge from others)
 - Starting from scratch with random initialization (loses all learned knowledge)
 
 ---
@@ -208,14 +195,14 @@ The graph shows that GQA-8 achieves the optimal balance, staying close to MQA's 
 **Algorithm:**
 
 1. **for** $h = 1, \ldots, H$ **do**
-2. &nbsp;&nbsp;&nbsp;&nbsp;$Q_h \leftarrow X W_q^h$ &nbsp;&nbsp;&nbsp;&nbsp;▷ Query projection for head $h$
-3. &nbsp;&nbsp;&nbsp;&nbsp;$K_h \leftarrow X W_k^h$ &nbsp;&nbsp;&nbsp;&nbsp;▷ Key projection for head $h$
-4. &nbsp;&nbsp;&nbsp;&nbsp;$V_h \leftarrow X W_v^h$ &nbsp;&nbsp;&nbsp;&nbsp;▷ Value projection for head $h$
-5. &nbsp;&nbsp;&nbsp;&nbsp;$\text{scores}_h \leftarrow (Q_h K_h^T) / \sqrt{d_k}$ &nbsp;&nbsp;&nbsp;&nbsp;▷ Scaled dot-product attention
-6. &nbsp;&nbsp;&nbsp;&nbsp;$\text{attn}_h \leftarrow \text{softmax}(\text{scores}_h)$ &nbsp;&nbsp;&nbsp;&nbsp;▷ Attention weights
-7. &nbsp;&nbsp;&nbsp;&nbsp;$\text{head}_h \leftarrow \text{attn}_h V_h$ &nbsp;&nbsp;&nbsp;&nbsp;▷ Weighted values
+2. $\quad Q_h \leftarrow X W_q^h$ $\triangleright$ Query projection for head $h$
+3. $\quad K_h \leftarrow X W_k^h$ $\triangleright$ Key projection for head $h$
+4. $\quad V_h \leftarrow X W_v^h$ $\triangleright$ Value projection for head $h$
+5. $\quad \text{scores}_h \leftarrow (Q_h K_h^T) / \sqrt{d_k}$ $\triangleright$ Scaled dot-product attention
+6. $\quad \text{attn}_h \leftarrow \text{softmax}(\text{scores}_h)$ $\triangleright$ Attention weights
+7. $\quad \text{head}_h \leftarrow \text{attn}_h V_h$ $\triangleright$ Weighted values
 8. **end for**
-9. $\text{output} \leftarrow W_o [\text{head}_1; \text{head}_2; \ldots; \text{head}_H]$ &nbsp;&nbsp;&nbsp;&nbsp;▷ Concatenate and project
+9. $\text{output} \leftarrow W_o [\text{head}_1; \text{head}_2; \ldots; \text{head}_H]$ $\triangleright$ Concatenate and project
 10. **return** $\text{output}$
 
 **Memory Complexity:** $O(H \cdot d_{\text{model}} \cdot d_k)$ for KV cache
@@ -232,15 +219,15 @@ The graph shows that GQA-8 achieves the optimal balance, staying close to MQA's 
 
 **Algorithm:**
 
-1. $K \leftarrow X W_k$ &nbsp;&nbsp;&nbsp;&nbsp;▷ Single shared key projection
-2. $V \leftarrow X W_v$ &nbsp;&nbsp;&nbsp;&nbsp;▷ Single shared value projection
+1. $K \leftarrow X W_k$ $\triangleright$ Single shared key projection
+2. $V \leftarrow X W_v$ $\triangleright$ Single shared value projection
 3. **for** $h = 1, \ldots, H$ **do**
-4. &nbsp;&nbsp;&nbsp;&nbsp;$Q_h \leftarrow X W_q^h$ &nbsp;&nbsp;&nbsp;&nbsp;▷ Query projection for head $h$
-5. &nbsp;&nbsp;&nbsp;&nbsp;$\text{scores}_h \leftarrow (Q_h K^T) / \sqrt{d_k}$ &nbsp;&nbsp;&nbsp;&nbsp;▷ All heads share same $K$
-6. &nbsp;&nbsp;&nbsp;&nbsp;$\text{attn}_h \leftarrow \text{softmax}(\text{scores}_h)$ &nbsp;&nbsp;&nbsp;&nbsp;▷ Attention weights
-7. &nbsp;&nbsp;&nbsp;&nbsp;$\text{head}_h \leftarrow \text{attn}_h V$ &nbsp;&nbsp;&nbsp;&nbsp;▷ All heads share same $V$
+4. $\quad Q_h \leftarrow X W_q^h$ $\triangleright$ Query projection for head $h$
+5. $\quad \text{scores}_h \leftarrow (Q_h K^T) / \sqrt{d_k}$ $\triangleright$ All heads share same $K$
+6. $\quad \text{attn}_h \leftarrow \text{softmax}(\text{scores}_h)$ $\triangleright$ Attention weights
+7. $\quad \text{head}_h \leftarrow \text{attn}_h V$ $\triangleright$ All heads share same $V$
 8. **end for**
-9. $\text{output} \leftarrow W_o [\text{head}_1; \text{head}_2; \ldots; \text{head}_H]$ &nbsp;&nbsp;&nbsp;&nbsp;▷ Concatenate and project
+9. $\text{output} \leftarrow W_o [\text{head}_1; \text{head}_2; \ldots; \text{head}_H]$ $\triangleright$ Concatenate and project
 10. **return** $\text{output}$
 
 **Memory Complexity:** $O(d_{\text{model}} \cdot d_k)$ for KV cache ✓ **Much smaller!**
@@ -261,17 +248,17 @@ The graph shows that GQA-8 achieves the optimal balance, staying close to MQA's 
 
 1. $\text{queries\_per\_group} \leftarrow H / G$
 2. **for** $g = 1, \ldots, G$ **do**
-3. &nbsp;&nbsp;&nbsp;&nbsp;$K_g \leftarrow X W_k^g$ &nbsp;&nbsp;&nbsp;&nbsp;▷ Key projection for group $g$
-4. &nbsp;&nbsp;&nbsp;&nbsp;$V_g \leftarrow X W_v^g$ &nbsp;&nbsp;&nbsp;&nbsp;▷ Value projection for group $g$
+3. $\quad K_g \leftarrow X W_k^g$ $\triangleright$ Key projection for group $g$
+4. $\quad V_g \leftarrow X W_v^g$ $\triangleright$ Value projection for group $g$
 5. **end for**
 6. **for** $h = 1, \ldots, H$ **do**
-7. &nbsp;&nbsp;&nbsp;&nbsp;$Q_h \leftarrow X W_q^h$ &nbsp;&nbsp;&nbsp;&nbsp;▷ Query projection for head $h$
-8. &nbsp;&nbsp;&nbsp;&nbsp;$g \leftarrow \lfloor h / \text{queries\_per\_group} \rfloor$ &nbsp;&nbsp;&nbsp;&nbsp;▷ Determine which group
-9. &nbsp;&nbsp;&nbsp;&nbsp;$\text{scores}_h \leftarrow (Q_h K_g^T) / \sqrt{d_k}$ &nbsp;&nbsp;&nbsp;&nbsp;▷ Use group's shared $K$
-10. &nbsp;&nbsp;&nbsp;&nbsp;$\text{attn}_h \leftarrow \text{softmax}(\text{scores}_h)$ &nbsp;&nbsp;&nbsp;&nbsp;▷ Attention weights
-11. &nbsp;&nbsp;&nbsp;&nbsp;$\text{head}_h \leftarrow \text{attn}_h V_g$ &nbsp;&nbsp;&nbsp;&nbsp;▷ Use group's shared $V$
+7. $\quad Q_h \leftarrow X W_q^h$ $\triangleright$ Query projection for head $h$
+8. $\quad g \leftarrow \lfloor h / \text{queries\_per\_group} \rfloor$ $\triangleright$ Determine which group
+9. $\quad \text{scores}_h \leftarrow (Q_h K_g^T) / \sqrt{d_k}$ $\triangleright$ Use group's shared $K$
+10. $\quad \text{attn}_h \leftarrow \text{softmax}(\text{scores}_h)$ $\triangleright$ Attention weights
+11. $\quad \text{head}_h \leftarrow \text{attn}_h V_g$ $\triangleright$ Use group's shared $V$
 12. **end for**
-13. $\text{output} \leftarrow W_o [\text{head}_1; \text{head}_2; \ldots; \text{head}_H]$ &nbsp;&nbsp;&nbsp;&nbsp;▷ Concatenate and project
+13. $\text{output} \leftarrow W_o [\text{head}_1; \text{head}_2; \ldots; \text{head}_H]$ $\triangleright$ Concatenate and project
 14. **return** $\text{output}$
 
 **Memory Complexity:** $O(G \cdot d_{\text{model}} \cdot d_k)$ for KV cache
@@ -291,10 +278,10 @@ The graph shows that GQA-8 achieves the optimal balance, staying close to MQA's 
 
 1. $\text{queries\_per\_group} \leftarrow H / G$
 2. **for** $g = 1, \ldots, G$ **do**
-3. &nbsp;&nbsp;&nbsp;&nbsp;$\text{start\_idx} \leftarrow g \times \text{queries\_per\_group}$
-4. &nbsp;&nbsp;&nbsp;&nbsp;$\text{end\_idx} \leftarrow \text{start\_idx} + \text{queries\_per\_group}$
-5. &nbsp;&nbsp;&nbsp;&nbsp;$W_k^g \leftarrow \frac{1}{\text{queries\_per\_group}} \times \sum_{i=\text{start\_idx}}^{\text{end\_idx}-1} W_k^i$ &nbsp;&nbsp;&nbsp;&nbsp;▷ Mean pool key matrices
-6. &nbsp;&nbsp;&nbsp;&nbsp;$W_v^g \leftarrow \frac{1}{\text{queries\_per\_group}} \times \sum_{i=\text{start\_idx}}^{\text{end\_idx}-1} W_v^i$ &nbsp;&nbsp;&nbsp;&nbsp;▷ Mean pool value matrices
+3. $\quad \text{start\_idx} \leftarrow g \times \text{queries\_per\_group}$
+4. $\quad \text{end\_idx} \leftarrow \text{start\_idx} + \text{queries\_per\_group}$
+5. $\quad W_k^g \leftarrow \frac{1}{\text{queries\_per\_group}} \times \sum_{i=\text{start\_idx}}^{\text{end\_idx}-1} W_k^i$ $\triangleright$ Mean pool key matrices
+6. $\quad W_v^g \leftarrow \frac{1}{\text{queries\_per\_group}} \times \sum_{i=\text{start\_idx}}^{\text{end\_idx}-1} W_v^i$ $\triangleright$ Mean pool value matrices
 7. **end for**
 8. **return** GQA model with $G$ key/value heads
 
@@ -309,12 +296,12 @@ The graph shows that GQA-8 achieves the optimal balance, staying close to MQA's 
 
 **Uptraining:**
 
-1. $\text{uptrain\_steps} \leftarrow 0.05 \times N_{\text{steps}}$ &nbsp;&nbsp;&nbsp;&nbsp;▷ Only 5% of original!
+1. $\text{uptrain\_steps} \leftarrow 0.05 \times N_{\text{steps}}$ $\triangleright$ Only 5% of original!
 2. $\text{model}_{\text{GQA}} \leftarrow$ converted model from mean pooling
 3. **for** $\text{step} = 1$ **to** $\text{uptrain\_steps}$ **do**
-4. &nbsp;&nbsp;&nbsp;&nbsp;$\text{batch} \leftarrow \text{sample}(\text{training\_data})$
-5. &nbsp;&nbsp;&nbsp;&nbsp;$\text{loss} \leftarrow \text{compute\_loss}(\text{model}_{\text{GQA}}, \text{batch})$
-6. &nbsp;&nbsp;&nbsp;&nbsp;$\text{model}_{\text{GQA}} \leftarrow \text{update\_parameters}(\text{model}_{\text{GQA}}, \text{loss})$ &nbsp;&nbsp;&nbsp;&nbsp;▷ Standard gradient descent
+4. $\quad \text{batch} \leftarrow \text{sample}(\text{training\_data})$
+5. $\quad \text{loss} \leftarrow \text{compute\_loss}(\text{model}_{\text{GQA}}, \text{batch})$
+6. $\quad \text{model}_{\text{GQA}} \leftarrow \text{update\_parameters}(\text{model}_{\text{GQA}}, \text{loss})$ $\triangleright$ Standard gradient descent
 7. **end for**
 8. **return** Uptrained GQA model
 
