@@ -278,10 +278,10 @@ The graph shows that GQA-8 achieves the optimal balance, staying close to MQA's 
 
 1. $\text{queries per group} \leftarrow H / G$
 2. **for** $g = 1, \ldots, G$ **do**
-3. $\quad \text{start\_idx} \leftarrow g \times \text{queries per group}$
-4. $\quad \text{end\_idx} \leftarrow \text{start\_idx} + \text{queries per group}$
-5. $\quad W_k^g \leftarrow \frac{1}{\text{queries per group}} \times \sum_{i=\text{start\_idx}}^{\text{end\_idx}-1} W_k^i$ $\triangleright$ Mean pool key matrices
-6. $\quad W_v^g \leftarrow \frac{1}{\text{queries per group}} \times \sum_{i=\text{start\_idx}}^{\text{end\_idx}-1} W_v^i$ $\triangleright$ Mean pool value matrices
+3. $\quad \text{start idx} \leftarrow g \times \text{queries per group}$
+4. $\quad \text{end idx} \leftarrow \text{start idx} + \text{queries per group}$
+5. $\quad W_k^g \leftarrow \frac{1}{\text{queries per group}} \times \sum_{i=\text{start idx}}^{\text{end idx}-1} W_k^i$ $\triangleright$ Mean pool key matrices
+6. $\quad W_v^g \leftarrow \frac{1}{\text{queries per group}} \times \sum_{i=\text{start idx}}^{\text{end idx}-1} W_v^i$ $\triangleright$ Mean pool value matrices
 7. **end for**
 8. **return** GQA model with $G$ key/value heads
 
