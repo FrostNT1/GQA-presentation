@@ -253,7 +253,7 @@ The graph shows that GQA-8 achieves the optimal balance, staying close to MQA's 
 5. **end for**
 6. **for** $h = 1, \ldots, H$ **do**
 7. $\quad Q_h \leftarrow X W_q^h$ $\triangleright$ Query projection for head $h$
-8. $\quad g \leftarrow \lfloor h / \text{queries\_per\_group} \rfloor$ $\triangleright$ Determine which group
+8. $\quad g \leftarrow \lfloor h / \text{queries per group} \rfloor$ $\triangleright$ Determine which group
 9. $\quad \text{scores}_h \leftarrow (Q_h K_g^T) / \sqrt{d_k}$ $\triangleright$ Use group's shared $K$
 10. $\quad \text{attn}_h \leftarrow \text{softmax}(\text{scores}_h)$ $\triangleright$ Attention weights
 11. $\quad \text{head}_h \leftarrow \text{attn}_h V_g$ $\triangleright$ Use group's shared $V$
@@ -276,12 +276,12 @@ The graph shows that GQA-8 achieves the optimal balance, staying close to MQA's 
 
 **Given:** MHA parameters $W_k^1, W_k^2, \ldots, W_k^H$ and $W_v^1, W_v^2, \ldots, W_v^H$
 
-1. $\text{queries\_per\_group} \leftarrow H / G$
+1. $\text{queries per group} \leftarrow H / G$
 2. **for** $g = 1, \ldots, G$ **do**
-3. $\quad \text{start\_idx} \leftarrow g \times \text{queries\_per\_group}$
-4. $\quad \text{end\_idx} \leftarrow \text{start\_idx} + \text{queries\_per\_group}$
-5. $\quad W_k^g \leftarrow \frac{1}{\text{queries\_per\_group}} \times \sum_{i=\text{start\_idx}}^{\text{end\_idx}-1} W_k^i$ $\triangleright$ Mean pool key matrices
-6. $\quad W_v^g \leftarrow \frac{1}{\text{queries\_per\_group}} \times \sum_{i=\text{start\_idx}}^{\text{end\_idx}-1} W_v^i$ $\triangleright$ Mean pool value matrices
+3. $\quad \text{start\_idx} \leftarrow g \times \text{queries per group}$
+4. $\quad \text{end\_idx} \leftarrow \text{start\_idx} + \text{queries per group}$
+5. $\quad W_k^g \leftarrow \frac{1}{\text{queries per group}} \times \sum_{i=\text{start\_idx}}^{\text{end\_idx}-1} W_k^i$ $\triangleright$ Mean pool key matrices
+6. $\quad W_v^g \leftarrow \frac{1}{\text{queries per group}} \times \sum_{i=\text{start\_idx}}^{\text{end\_idx}-1} W_v^i$ $\triangleright$ Mean pool value matrices
 7. **end for**
 8. **return** GQA model with $G$ key/value heads
 
@@ -296,12 +296,12 @@ The graph shows that GQA-8 achieves the optimal balance, staying close to MQA's 
 
 **Uptraining:**
 
-1. $\text{uptrain\_steps} \leftarrow 0.05 \times N_{\text{steps}}$ $\triangleright$ Only 5% of original!
+1. $\text{uptrain steps} \leftarrow 0.05 \times N_{\text{steps}}$ $\triangleright$ Only 5% of original!
 2. $\text{model}_{\text{GQA}} \leftarrow$ converted model from mean pooling
-3. **for** $\text{step} = 1$ **to** $\text{uptrain\_steps}$ **do**
-4. $\quad \text{batch} \leftarrow \text{sample}(\text{training\_data})$
-5. $\quad \text{loss} \leftarrow \text{compute\_loss}(\text{model}_{\text{GQA}}, \text{batch})$
-6. $\quad \text{model}_{\text{GQA}} \leftarrow \text{update\_parameters}(\text{model}_{\text{GQA}}, \text{loss})$ $\triangleright$ Standard gradient descent
+3. **for** $\text{step} = 1$ **to** $\text{uptrain steps}$ **do**
+4. $\quad \text{batch} \leftarrow \text{sample}(\text{training data})$
+5. $\quad \text{loss} \leftarrow \text{compute loss}(\text{model}_{\text{GQA}}, \text{batch})$
+6. $\quad \text{model}_{\text{GQA}} \leftarrow \text{update parameters}(\text{model}_{\text{GQA}}, \text{loss})$ $\triangleright$ Standard gradient descent
 7. **end for**
 8. **return** Uptrained GQA model
 
