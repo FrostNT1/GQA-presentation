@@ -7,7 +7,7 @@
 **ArXiv:** https://arxiv.org/abs/2305.13245
 
 **Presented by:** Shivam Tyagi
-**Date:** Tuesday, October 22, 2025
+**Date:** Thursday, October 23, 2025
 
 ---
 
